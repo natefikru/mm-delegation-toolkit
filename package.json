@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "@metamask-private/delegator-core-viem": "0.6.1"
+  }
+}
