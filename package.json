@@ -1,5 +1,29 @@
 {
+  "name": "mm-delegation-toolkit",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "create-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/create-delegation.ts",
+    "redeem-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/redeem-delegation.ts",
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
-    "@metamask-private/delegator-core-viem": "0.6.1"
+    "@metamask-private/delegator-core-viem": "0.6.1",
+    "debug": "^4.3.4",
+    "dotenv": "16.4.7",
+    "ethers": "6.13.5",
+    "viem": "latest"
+  },
+  "devDependencies": {
+    "@types/debug": "^4.1.12",
+    "@types/node": "^20.11.24",
+    "tsx": "4.19.3",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }

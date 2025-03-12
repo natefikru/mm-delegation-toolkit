@@ -1,1 +1,0 @@
-@metamask/delegation-framework/=lib/delegation-framework/
