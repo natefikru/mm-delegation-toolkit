@@ -1,13 +1,21 @@
 # MetaMask Delegation Toolkit
 
-This toolkit provides a set of tools for creating and redeeming delegations using the MetaMask Delegation Framework.
+This toolkit provides a set of tools for creating and redeeming delegations using the MetaMask Delegation Framework. It allows you to create smart account delegations where one account (the delegate) can perform actions on behalf of another account (the delegator).
+
+## Overview
+
+The MetaMask Delegation Toolkit demonstrates how to use the MetaMask Delegation Framework with Account Abstraction (ERC-4337) to create and execute delegations. The toolkit uses the Sepolia testnet by default and includes scripts for:
+
+1. Creating a delegation from a delegator to a delegate
+2. Executing actions on behalf of the delegator using the delegation
+3. Managing permissions using the ERC-7715 standard
 
 ## Prerequisites
 
 - Node.js v18 or higher
-- Git
-- Foundry (for local development with Anvil)
-- pnpm (for running the Alto bundler)
+- A private key with some Sepolia ETH (for the delegate account)
+- Access to a Sepolia RPC endpoint
+- Access to a bundler service (Pimlico is used by default)
 
 ## Setup
 
@@ -22,173 +30,121 @@ This toolkit provides a set of tools for creating and redeeming delegations usin
    npm install
    ```
 
-3. Set up environment variables:
+3. Configure environment variables:
+   Create a `.env` file with the following variables:
    ```
-   cp .env.example .env
+   RPC_URL=https://sepolia.infura.io/v3/YOUR_INFURA_KEY
+   CHAIN_ID=11155111
+   PRIVATE_KEY=YOUR_PRIVATE_KEY
+   BUNDLER_URL=https://api.pimlico.io/v2/11155111/rpc?apikey=YOUR_PIMLICO_API_KEY
    ```
 
-## Running the Toolkit
+## Scripts
 
-### 1. Start Anvil (Local Blockchain)
+The toolkit includes the following scripts:
 
-```
-npm run start-anvil
-```
+### create-delegation.ts
 
-This will start a local Anvil blockchain with a 12-second block time.
+This script demonstrates how to create a delegation from a delegator to a delegate and execute an action on behalf of the delegator.
 
-### 2. Deploy Contracts
+The script performs the following steps:
+1. Checks if the RPC and bundler services are running
+2. Creates a new random delegator account
+3. Creates a MetaMask smart account for the delegator
+4. Uses your private key to create a delegate account
+5. Creates a MetaMask smart account for the delegate
+6. Creates and signs a delegation from the delegator to the delegate
+7. Executes an action on behalf of the delegator using the delegation
 
-```
-npm run deploy-contracts
-```
-
-This will deploy the EntryPoint contract and other necessary contracts to the local Anvil blockchain. The script will:
-- Deploy the EntryPoint contract
-- Deploy the DelegationManager contract
-- Deploy the DeleGator implementations (MultiSig and Hybrid)
-- Update the `.env` file with the deployed contract addresses
-
-### 3. Start the Alto Bundler
-
-```
-npm run start-bundler
-```
-
-This will set up and run the Pimlico Alto bundler, which is required for processing user operations. The bundler will:
-- Clone the Alto bundler repository if it doesn't exist
-- Install dependencies and build the bundler
-- Start the bundler with the correct configuration
-- Update the `.env` file with the bundler URL
-
-### 4. Create a Delegation
-
+To run the script:
 ```
 npm run create-delegation
 ```
 
-This will create a delegation from a delegator to a delegate and save it to `delegation.json`. The script will:
-- Generate a random salt for the delegation
-- Create a delegation from the delegator to the delegate
-- Sign the delegation with the delegator's private key
-- Save the delegation to `delegation.json`
+### shared.ts
 
-### 5. Redeem a Delegation
+This file contains shared utilities used by the other scripts, including:
+- Client setup for interacting with the blockchain and bundler
+- Helper functions for creating MetaMask smart accounts
+- Utilities for formatting private keys and handling BigInt values
+- Functions for generating salts and calculating gas fees
 
-```
-npm run redeem-delegation
-```
+### permissions.ts
 
-This will redeem the delegation by sending a user operation through the Alto bundler. The script will:
-- Read the delegation from `delegation.json`
-- Verify the delegation data
-- Create a smart account for the delegate
-- Fund the smart account if necessary
-- Create and sign a user operation to transfer ETH
-- Send the user operation to the Alto bundler
-- Wait for the user operation to be included in a block
-- Save the transaction details to `redemption-result.json`
+This file contains utilities for creating and managing ERC-7715 permission requests, which provide a standardized format for off-chain permission management between wallets and dApps.
 
-## Full Flow
+## How It Works
 
-To run the entire flow in one command:
+### Delegation Process
 
-```
-npm run full-flow
-```
+1. **Create Delegator Account**: A new random account is created to serve as the delegator.
 
-This will:
-1. Start Anvil
-2. Deploy contracts
-3. Start the Alto bundler
-4. Create a delegation
-5. Redeem the delegation
+2. **Create Smart Accounts**: Both the delegator and delegate get MetaMask smart accounts created for them. These are counterfactual accounts that may not be deployed on-chain yet.
 
-## Stopping Services
+3. **Create Delegation**: A delegation is created from the delegator to the delegate with specific caveats (restrictions). In the example, the delegation only allows transferring 0 ETH to the zero address.
 
-To stop all running services:
+4. **Execute Delegation**: The delegate executes an action on behalf of the delegator. If the delegator's smart account is not deployed yet, it will be deployed as part of this process.
 
-```
-npm run kill-all
-```
+### Technical Details
 
-This will stop Anvil and the Alto bundler.
+- **Smart Accounts**: The toolkit uses MetaMask's Hybrid implementation of smart accounts, which supports the delegation framework.
 
-## Configuration
+- **Caveats**: Delegations can include caveats that restrict what the delegate can do. The example uses `allowedTargets` and `valueLte` caveats.
 
-The toolkit uses the following environment variables:
+- **Account Abstraction**: The toolkit uses ERC-4337 (Account Abstraction) to execute user operations through a bundler.
 
-- `RPC_URL`: The URL of the RPC endpoint (default: http://localhost:8545)
-- `CHAIN_ID`: The chain ID (default: 31337 for Anvil)
-- `PRIVATE_KEY`: The private key to use for transactions
-- `ENTRYPOINT_ADDRESS`: The address of the EntryPoint contract
-- `DELEGATION_MANAGER_ADDRESS`: The address of the DelegationManager contract
-- `HYBRID_DELEGATOR_ADDRESS`: The address of the HybridDelegator contract
-- `MULTISIG_DELEGATOR_ADDRESS`: The address of the MultiSigDelegator contract
-- `BUNDLER_URL`: The URL of the bundler (default: http://localhost:3000)
+- **Bundler**: The bundler is responsible for submitting user operations to the blockchain. The toolkit uses Pimlico's bundler service by default.
 
-## Using the Pimlico Alto Bundler
+## Common Issues and Troubleshooting
 
-The toolkit uses the Pimlico Alto bundler for processing user operations. The bundler is configured to work with the local Anvil blockchain and the deployed EntryPoint contract.
+### UserOperation Reverted During Simulation
 
-The bundler is started with the following parameters:
-- EntryPoint address: The address of the deployed EntryPoint contract
-- RPC URL: The URL of the local Anvil blockchain
-- Executor private key: The private key to use for executing transactions
-- Utility private key: The private key to use for utility operations
-- Chain ID: The chain ID of the local Anvil blockchain
-- Safe mode: Disabled for local development
-- Deploy simulations contract: Enabled for local development
+If you see an error like `UserOperation reverted during simulation with reason: 0x3db6791c`, it could be due to:
 
-## Troubleshooting
+1. **Insufficient Funds**: The delegator or delegate account may not have enough ETH to cover gas costs.
+2. **Invalid Delegation**: The delegation may have expired or have invalid caveats.
+3. **Bundler Issues**: The bundler may be rejecting the user operation due to gas price or other issues.
 
-### Bundler Issues
+### Connection Issues
 
-If you encounter issues with the bundler, check the logs in `alto-bundler.log`. Common issues include:
-- Port 3000 already in use: Stop any other services using port 3000 or change the bundler port
-- EntryPoint contract not deployed: Make sure to run `npm run deploy-contracts` before starting the bundler
-- Utility private key issues: Make sure the utility private key is correctly set in the bundler configuration
+If you have trouble connecting to the RPC or bundler:
 
-### Contract Deployment Issues
+1. **Check RPC URL**: Ensure your RPC URL is correct and the service is available.
+2. **Check Bundler URL**: Ensure your bundler URL is correct and the service is available.
+3. **API Keys**: If using services that require API keys, ensure they are valid.
 
-If you encounter issues with contract deployment, make sure Anvil is running and try redeploying the contracts. Common issues include:
-- Anvil not running: Start Anvil with `npm run start-anvil`
-- Contract size limits: Some contracts may exceed the size limit, but the deployment script will continue
-
-### Delegation Issues
-
-If you encounter issues with delegation creation or redemption, make sure the bundler is running and the contracts are deployed correctly. Common issues include:
-- Invalid signature: Make sure the delegator's private key is correctly set
-- Insufficient funds: Make sure the delegator has sufficient funds
-- Bundler errors: Check the bundler logs for errors
-
-## Advanced Usage
+## Extending the Toolkit
 
 ### Custom Delegations
 
-You can create custom delegations by modifying the `create-delegation.ts` script. The script supports:
-- Custom delegator and delegate addresses
-- Custom delegation parameters
-- Custom delegation types (MultiSig or Hybrid)
+You can modify the `createDelegation` function in `create-delegation.ts` to create delegations with different caveats:
 
-### Custom User Operations
+```typescript
+const caveats = createCaveatBuilder(delegatorAccount.environment)
+  .addCaveat("allowedTargets", [yourTargetAddress])
+  .addCaveat("valueLte", maxEthValue);
+```
 
-You can create custom user operations by modifying the `redeem-delegation.ts` script. The script supports:
-- Custom callData for the user operation
-- Custom gas parameters
-- Custom paymaster configuration
+### Custom Executions
 
-### Using with Different Networks
+You can modify the `executions` array in `executeOnBehalfOfDelegator` to perform different actions:
 
-To use the toolkit with different networks, update the `.env` file with the appropriate values:
-- Set `RPC_URL` to the URL of the network's RPC endpoint
-- Set `CHAIN_ID` to the chain ID of the network
-- Deploy the contracts to the network and update the contract addresses
-- Configure the bundler for the network
+```typescript
+const executions: ExecutionStruct[] = [
+  {
+    target: yourContractAddress,
+    value: ethAmount,
+    callData: yourContractCalldata,
+  },
+];
+```
 
-## Contributing
+## Resources
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+- [MetaMask Delegation Framework Documentation](https://docs.metamask.io/delegation/)
+- [ERC-4337 (Account Abstraction) Specification](https://eips.ethereum.org/EIPS/eip-4337)
+- [ERC-7715 Permission Standard](https://eips.ethereum.org/EIPS/eip-7715)
+- [Pimlico Bundler Documentation](https://docs.pimlico.io/)
 
 ## License
 
