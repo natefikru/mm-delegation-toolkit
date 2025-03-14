@@ -15,7 +15,8 @@ import {
   zeroAddress,
   createPublicClient,
   http,
-  isAddressEqual
+  isAddressEqual,
+  parseEther
 } from "viem";
 import { sepolia } from "viem/chains";
 import * as dotenv from "dotenv";
@@ -88,7 +89,7 @@ async function createDelegator(){
 
 /**
  * Create and sign a root delegation, from the delegatorAccount, to the
- * delegateAddress, allowing only a transfer of 0 ether to the zero address.
+ * delegateAddress, with no restrictions (no caveats).
  * @param delegatorAccount - The MetaMaskSmartAccount that is creating the delegation.
  * @param delegateAddress - The address of the recipient of the delegation.
  * @resolves to the signed delegation.
@@ -102,14 +103,16 @@ export const createDelegation = async (
   // These caveats are allowing only a transfer of 0 ether to the zero address.
   // Not a very useful operation, but it demonstrates how caveats that can be
   // applied to a delegation.
-  const caveats = createCaveatBuilder(delegatorAccount.environment)
-    .addCaveat("allowedTargets", [zeroAddress])
-    .addCaveat("valueLte", 0n);
-
+  // const caveats = createCaveatBuilder(delegatorAccount.environment)
+  //   .addCaveat("allowedTargets", [zeroAddress])
+  //   .addCaveat("valueLte", 0n);
+  
+  // Creating a delegation with no caveats, allowing the delegate to perform any action
+  // on behalf of the delegator
   const delegation = createRootDelegation(
     delegateAddress,
     delegatorAccount.address,
-    caveats,
+    [],
     // The salt is used to create a unique delegation for each call.
     BigInt(createSalt())
   );
@@ -128,11 +131,12 @@ export const createDelegation = async (
 };
 
 /**
- * Redeem the delegation, executing a zero value Call to the zero address. If
- * the Delegator is not deployed, a Call will be inserted to deploy the account
+ * Redeem the delegation, executing a transfer of 0.001 ETH from the delegator to the redeemer.
+ * If the Delegator is not deployed, a Call will be inserted to deploy the account
  * before redeeming the delegation.
  * @param redeemerAccount - The MetaMaskSmartAccount redeeming the delegation.
  * Must be the `delegate` on the delegation.
+ * @param delegateAddress - The address of the delegate (not used in function body, kept for API compatibility).
  * @param delegation - The delegation being redeemed.
  * @param delegatorFactoryArgs - The factoryArgs for the delegator account, if
  * the account is not deployed.
@@ -157,23 +161,26 @@ export const executeOnBehalfOfDelegator = async (
   const delegationChain = [delegation];
 
   // The action that the redeemer is executing on behalf of the delegator.
+  // This execution transfers 0.001 ETH from the delegator to the redeemer
   const executions: ExecutionStruct[] = [
     {
-      target: zeroAddress,
-      value: 0n,
+      target: redeemerAccount.address,
+      value: parseEther("0.001"),
       callData: "0x",
     },
   ];
 
+  // Create the calldata for redeeming the delegation
   const redeemDelegationCalldata = DelegationFramework.encode.redeemDelegations(
     [delegationChain],
     [SINGLE_DEFAULT_MODE],
     [executions]
   );
 
+  // The call to the delegation framework to redeem the delegation
   const calls: Call[] = [
     {
-      to: redeemerAccount.address,
+      to: delegation.delegator, // Target the delegator's account for the delegation redemption
       data: redeemDelegationCalldata,
     },
   ];
@@ -243,7 +250,7 @@ async function main() {
     hash: userOperationHash,
   })
 
-  console.log("✅ User operation executed. Hash:", userOperationReceipt.userOpHash)
+  console.log("✅ User operation:", userOperationReceipt)
   return
 }
 
