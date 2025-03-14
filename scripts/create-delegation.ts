@@ -201,6 +201,7 @@ export const executeOnBehalfOfDelegator = async (
   const feePerGas = await getFeePerGas();
 
   console.log("\n📝 Sending UserOperation...");
+  // This ends up throwing an error with code 0x0796d945
   const userOperationHash = await bundlerClient.sendUserOperation({
     account: redeemerAccount,
     calls,
