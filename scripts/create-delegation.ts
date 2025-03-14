@@ -1,16 +1,34 @@
-// Create Delegation Script
-// This script creates a delegator account, creates a delegation to a delegate account,
-// and returns the delegation in a simplified format.
-
-import { privateKeyToAccount, generatePrivateKey } from "viem/accounts";
-import { createPublicClient, http, PrivateKeyAccount, } from "viem";
-import * as dotenv from "dotenv";
-import { writeFileSync } from "fs";
-import { createRootDelegation } from "@metamask-private/delegator-core-viem";
+import { 
+  type DelegationStruct,
+  type ExecutionStruct,
+  type Call,
+  MetaMaskSmartAccount,
+  Implementation,
+  DelegationFramework,
+  createCaveatBuilder, 
+  createRootDelegation, 
+  SINGLE_DEFAULT_MODE,
+} from "@metamask-private/delegator-core-viem";
+import {
+  type Address,
+  type Hex,
+  zeroAddress,
+  createPublicClient,
+  http,
+  isAddressEqual
+} from "viem";
 import { sepolia } from "viem/chains";
-import { createMetaMaskAccount, createSalt, customJSONStringify } from "./shared";
-import { formatPrivateKey } from "./shared";
-
+import * as dotenv from "dotenv";
+import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
+import { 
+  createMetaMaskAccount, 
+  createSalt, 
+  formatPrivateKey, 
+  bundlerClient, 
+  getFeePerGas,
+  publicClient
+} from "./shared";
+import { createPermissionRequest } from "./permissions";
 // Load environment variables
 dotenv.config();
 
@@ -19,40 +37,22 @@ const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
 const BUNDLER_URL = process.env.BUNDLER_URL || "http://localhost:4337";
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
 
-if (!PRIVATE_KEY) {
-  console.error("PRIVATE_KEY is required in .env file");
-  process.exit(1);
-}
-
-// Debug private key format (safely)
-console.log("Private key type:", typeof PRIVATE_KEY);
-console.log("Private key length:", PRIVATE_KEY.length);
-console.log("Private key starts with 0x:", PRIVATE_KEY.startsWith('0x'));
-console.log("Private key first few chars:", PRIVATE_KEY.substring(0, 6) + '...');
-console.log("Private key contains quotes:", PRIVATE_KEY.includes('"') || PRIVATE_KEY.includes("'"));
-
-// Create public client
-export const publicClient = createPublicClient({
-  chain: sepolia,
-  transport: http(RPC_URL),
-});
-
-// Main function
-export async function main() {
-  try {
-    console.log("\n🚀 Starting delegation creation process...");
-    
-    // Step 1: Check if RPC is running
+async function checkIfRPCIsRunning() {
+    // Check if RPC is running
     console.log("\n📡 Checking if RPC is running...");
     try {
       const blockNumber = await publicClient.getBlockNumber();
       console.log("✅ RPC is running. Current block number:", blockNumber);
+      return true;
     } catch (error) {
       console.error("❌ Error connecting to RPC:", error);
       process.exit(1);
     }
-    
-    // Step 2: Check if bundler is running
+}
+
+
+async function checkIfBundlerIsRunning() {
+    // Check if bundler is running
     console.log("\n📡 Checking if bundler is running...");
     try {
       const response = await fetch(BUNDLER_URL, {
@@ -68,112 +68,183 @@ export async function main() {
         }),
       });
       
-      const data = await response.json();
-      console.log("✅ Bundler is running. Supported EntryPoints:", data.result);
+      console.log("✅ Bundler is running.");
+      return true;
     } catch (error) {
       console.error("❌ Error connecting to bundler:", error);
       console.warn("⚠️ Bundler may not be running or accessible");
+      return false;
     }
-    
-    // Step 3: Create delegator account (user's account)
+}
+
+async function createDelegator(){
+    // Create a delegator account, brand new account
     console.log("\n📝 Creating delegator account...");
     const delegatorPrivateKey = generatePrivateKey();
     const delegatorOwner = privateKeyToAccount(delegatorPrivateKey);
+    console.log("✅ Delegator EOA account created. Address:", delegatorOwner.address);
+    return delegatorOwner;
+}
 
-    console.log(`🔑 Delegator private key: ${delegatorPrivateKey}`);
-    console.log(`👤 Delegator owner address: ${delegatorOwner.address}`);
+/**
+ * Create and sign a root delegation, from the delegatorAccount, to the
+ * delegateAddress, allowing only a transfer of 0 ether to the zero address.
+ * @param delegatorAccount - The MetaMaskSmartAccount that is creating the delegation.
+ * @param delegateAddress - The address of the recipient of the delegation.
+ * @resolves to the signed delegation.
+ */
+export const createDelegation = async (
+  delegatorAccount: MetaMaskSmartAccount<Implementation>,
+  delegateAddress: Address
+): Promise<DelegationStruct> => {
+  console.log("\n📝 Creating delegation...");
 
-    const delegatorSmartAccount = await createMetaMaskAccount(delegatorOwner);
-    
-    // Step 4: Create delegate account (merchant's account)
-    console.log("\n📝 Creating delegate account...");
-    
-    try {
-      // We've already checked that PRIVATE_KEY is not undefined above
-      const formattedPrivateKey = formatPrivateKey(PRIVATE_KEY as string);
-      console.log("Successfully formatted private key");
-      
-      // Try a direct approach with a known good format
-      console.log("Attempting to create account with formatted key...");
-      const delegateOwner = privateKeyToAccount(formattedPrivateKey);
-      console.log(`👤 Delegate owner address: ${delegateOwner.address}`);
-      
-      // Step 5: Create a simple delegation
-      console.log("\n📝 Creating delegation...");
-      
-      const salt = BigInt(createSalt());
+  // These caveats are allowing only a transfer of 0 ether to the zero address.
+  // Not a very useful operation, but it demonstrates how caveats that can be
+  // applied to a delegation.
+  const caveats = createCaveatBuilder(delegatorAccount.environment)
+    .addCaveat("allowedTargets", [zeroAddress])
+    .addCaveat("valueLte", 0n);
 
-      const delegation = createRootDelegation(
-        delegateOwner.address, 
-        delegatorSmartAccount.address, 
-        [], 
-        salt,
-      );
+  const delegation = createRootDelegation(
+    delegateAddress,
+    delegatorAccount.address,
+    caveats,
+    // The salt is used to create a unique delegation for each call.
+    BigInt(createSalt())
+  );
 
-      const signature = await delegatorSmartAccount.signDelegation({delegation});
+  const signature = await delegatorAccount.signDelegation({ delegation });
 
-      const signedDelegation = {
-        ...delegation,
-        signature: signature,
-      };
-      
-      console.log("Delegation details:");
-      console.log("- Delegator:", delegation.delegator);
-      console.log("- Delegate:", delegation.delegate);
-      console.log("- Salt:", delegation.salt.toString());
-      
-      console.log("\n📄 Delegation in simplified format:");
-      console.log(customJSONStringify(signedDelegation));
-      
-      // Save delegation to file in EIP-7715 format
-      const delegationFile = {
-        delegations: [signedDelegation]
-      };
-      
-      const delegationPath = "./delegation.json";
-      writeFileSync(delegationPath, customJSONStringify(delegationFile));
-      console.log(`\n💾 Delegation saved to ${delegationPath}`);
-      
-      console.log("\n✅ Delegation creation process completed successfully!");
-      
-      return {
-        delegatorOwner,
-        delegateOwner,
-        delegation
-      };
-    } catch (error) {
-      console.error("❌ Error with private key processing:", error);
-      
-      // Try an alternative approach - generate a new key for testing
-      console.log("\n⚠️ Attempting fallback with a generated key for testing purposes...");
-      console.log("⚠️ NOTE: This is only for debugging. You should fix your PRIVATE_KEY in .env");
-      
-      const fallbackPrivateKey = generatePrivateKey();
-      console.log(`Generated fallback key: ${fallbackPrivateKey.substring(0, 6)}...`);
-      
-      const delegateOwner = privateKeyToAccount(fallbackPrivateKey);
-      console.log(`👤 Delegate owner address (fallback): ${delegateOwner.address}`);
-      
-      throw new Error("Original private key format issue. See logs above for details.");
-    }
-  } catch (error) {
-    console.error("❌ Error in main function:", error);
-    throw error;
+  const delegationWithSignature = {
+    ...delegation,
+    signature,
+  };
+
+  console.log("Delegation created:", delegationWithSignature);
+
+  console.log("✅ Delegation creation complete");
+  return delegationWithSignature;
+};
+
+/**
+ * Redeem the delegation, executing a zero value Call to the zero address. If
+ * the Delegator is not deployed, a Call will be inserted to deploy the account
+ * before redeeming the delegation.
+ * @param redeemerAccount - The MetaMaskSmartAccount redeeming the delegation.
+ * Must be the `delegate` on the delegation.
+ * @param delegation - The delegation being redeemed.
+ * @param delegatorFactoryArgs - The factoryArgs for the delegator account, if
+ * the account is not deployed.
+ * @resolves to the UserOperationHash, once it has been settled on chain.
+ */
+export const executeOnBehalfOfDelegator = async (
+  redeemerAccount: MetaMaskSmartAccount<Implementation>,
+  delegation: DelegationStruct,
+  delegatorFactoryArgs?: { factory: Address; factoryData: Hex }
+) => {
+  console.log("\n📝 Executing delegation on behalf of delegator...");
+
+  console.log("Redeemer account address:", redeemerAccount.address);
+  console.log("Delegate address:", delegation.delegate);
+
+  if (!isAddressEqual(redeemerAccount.address, delegation.delegate)) {
+    throw new Error(
+      `Redeemer account address not equal to delegate. Redeemer: ${redeemerAccount.address}, delegate: ${delegation.delegate}`
+    );
   }
-}
 
-// Execute main function if this script is run directly
-if (import.meta.url === new URL(import.meta.url).href) {
-  main()
-    .then((result) => {
-      console.log("\n🎉 Script completed successfully!");
-      return result;
-    })
-    .catch((error) => {
-      console.error("\n❌ Error executing script:", error);
-      console.error("Stack trace:", error.stack);
-      process.exit(1);
+  const delegationChain = [delegation];
+
+  // The action that the redeemer is executing on behalf of the delegator.
+  const executions: ExecutionStruct[] = [
+    {
+      target: zeroAddress,
+      value: 0n,
+      callData: "0x",
+    },
+  ];
+
+  const redeemDelegationCalldata = DelegationFramework.encode.redeemDelegations(
+    [delegationChain],
+    [SINGLE_DEFAULT_MODE],
+    [executions]
+  );
+
+  const calls: Call[] = [
+    {
+      to: redeemerAccount.address,
+      data: redeemDelegationCalldata,
+    },
+  ];
+
+  // The delegate is submitting the user operation, so may be deployed via initcode. If the delegator
+  // is not yet on-chain, it must be deployed before redeeming the delegation. If factory
+  // args are provided, an additional call is inserted into the calls array that is encoded
+  // for the user operation.
+  if (delegatorFactoryArgs) {
+    const { factory, factoryData } = delegatorFactoryArgs;
+
+    calls.unshift({
+      to: factory,
+      data: factoryData,
     });
+  }
+
+  const feePerGas = await getFeePerGas();
+
+  console.log("\n📝 Sending UserOperation...");
+  const userOperationHash = await bundlerClient.sendUserOperation({
+    account: redeemerAccount,
+    calls,
+    ...feePerGas,
+  });
+
+  console.log("✅ Delegation execution submitted");
+  return userOperationHash;
+};
+
+async function main() {
+  // Check if required services are running
+  await checkIfRPCIsRunning()
+  await checkIfBundlerIsRunning()
+
+  // Create delegator account and smart account
+  const delegatorOwner = await createDelegator()
+  const delegatorSmartAccount = await createMetaMaskAccount(delegatorOwner)
+  console.log("Delegator smart account address:", delegatorSmartAccount.address)
+
+  // Create delegate account from private key
+  const delegateOwner = privateKeyToAccount(formatPrivateKey(PRIVATE_KEY as string))
+  console.log("\n📝 Delegate EOA account address:", delegateOwner.address)
+  const delegateSmartAccount = await createMetaMaskAccount(delegateOwner)
+  console.log("Delegate smart account address:", delegateSmartAccount.address)
+
+  // Create and sign delegation
+  const signedDelegation = await createDelegation(
+    delegatorSmartAccount, 
+    delegateSmartAccount.address
+  )
+
+  const { factory, factoryData } = await delegatorSmartAccount.getFactoryArgs();
+
+  const factoryArgs =
+    factory && factoryData ? { factory, factoryData } : undefined;
+
+  // Execute delegation on behalf of delegator
+  const userOperationHash = await executeOnBehalfOfDelegator(
+    delegateSmartAccount,
+    signedDelegation,
+    factoryArgs
+  )
+
+  // Wait for user operation receipt
+  const userOperationReceipt = await bundlerClient.waitForUserOperationReceipt({
+    hash: userOperationHash,
+  })
+
+  console.log("✅ User operation executed. Hash:", userOperationReceipt.userOpHash)
+  return
 }
 
-export default { main }; 
+main(); 

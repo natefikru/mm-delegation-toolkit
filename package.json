@@ -6,6 +6,8 @@
   "scripts": {
     "create-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/create-delegation.ts",
     "redeem-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/redeem-delegation.ts",
+    "format-delegation": "NODE_NO_WARNINGS=1 tsx scripts/format-delegation.ts",
+    "check-balance": "NODE_NO_WARNINGS=1 tsx scripts/check-balance.ts"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +17,8 @@
     "debug": "^4.3.4",
     "dotenv": "16.4.7",
     "ethers": "6.13.5",
-    "viem": "latest"
+    "permissionless": "0.2.36",
+    "viem": "2.23.9"
   },
   "devDependencies": {
     "@types/debug": "^4.1.12",
@@ -25,5 +28,8 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "overrides": {
+    "ox": "0.6.9"
   }
 }

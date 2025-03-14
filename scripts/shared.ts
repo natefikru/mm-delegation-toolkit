@@ -1,9 +1,46 @@
-import { Implementation } from "@metamask-private/delegator-core-viem/dist";
-import { toMetaMaskSmartAccount } from "@metamask-private/delegator-core-viem/dist";
+import { toMetaMaskSmartAccount, Implementation } from "@metamask-private/delegator-core-viem";
+import { createPimlicoClient } from "permissionless/clients/pimlico";
 import { randomBytes } from "crypto";
-import { PrivateKeyAccount } from "viem/accounts";
-import { toHex } from "viem/utils";
-import { publicClient } from "./create-delegation";
+import { createPublicClient, http } from "viem"
+import { PrivateKeyAccount } from "viem/accounts"
+import { toHex } from "viem/utils"
+import { sepolia } from "viem/chains"
+import * as dotenv from "dotenv"
+import { createBundlerClient, createPaymasterClient } from "viem/account-abstraction";
+
+export const chain = sepolia;
+
+// Load environment variables
+dotenv.config();
+
+const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
+export const BUNDLER_URL = process.env.BUNDLER_URL || "http://localhost:3000";
+const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io";
+
+export const publicClient = getPublicClient();
+
+export const bundlerClient = getBundlerClient();
+
+// Create public client for reading blockchain state
+function getPublicClient() {
+  const publicClient = createPublicClient({
+    chain: sepolia,
+    transport: http(RPC_URL),
+  });
+  return publicClient;
+}
+
+export function getBundlerClient() {
+  const paymasterClient = createPaymasterClient({
+    transport: http(BUNDLER_URL),
+  });
+  const bundlerClient = createBundlerClient({
+    transport: http(BUNDLER_URL),
+    chain,
+    paymaster: paymasterClient,
+  });
+  return bundlerClient;
+}
 
 /**
  * Formats a private key to ensure it has the correct format for viem
@@ -11,11 +48,13 @@ import { publicClient } from "./create-delegation";
  * @returns A properly formatted private key with 0x prefix
  */
 export const formatPrivateKey = (key: string): `0x${string}` => {
-    console.log("Formatting private key...");
+  if (key === undefined || key === null || key === "") {
+    console.error("PRIVATE_KEY is required in .env file");
+    process.exit(1);
+  }
     
     // Remove any whitespace
     let formattedKey = key.trim();
-    console.log("After trim, length:", formattedKey.length);
     
     // Remove quotes if present
     if ((formattedKey.startsWith('"') && formattedKey.endsWith('"')) || 
@@ -29,11 +68,6 @@ export const formatPrivateKey = (key: string): `0x${string}` => {
       formattedKey = `0x${formattedKey}`;
       console.log("Added 0x prefix");
     }
-    
-    console.log("Final key format check:");
-    console.log("- Length:", formattedKey.length);
-    console.log("- Starts with 0x:", formattedKey.startsWith('0x'));
-    console.log("- First few chars:", formattedKey.substring(0, 6) + '...');
     
     // Ensure it's a valid hex string
     if (!/^0x[0-9a-fA-F]+$/.test(formattedKey)) {
@@ -50,9 +84,6 @@ export const formatPrivateKey = (key: string): `0x${string}` => {
     return formattedKey as `0x${string}`;
   };
 
-  // Helper functions
-export const createSalt = () => toHex(randomBytes(8));
-
 // Custom JSON serializer to handle BigInt
 export const customJSONStringify = (obj: any) => {
   return JSON.stringify(obj, (_, value) => 
@@ -66,11 +97,38 @@ export const customJSONStringify = (obj: any) => {
  * @resolves to the MetaMaskSmartAccount instance.
  */
 export const createMetaMaskAccount = async (account: PrivateKeyAccount) => {
-    return await toMetaMaskSmartAccount({
+    console.log("\n📝 Creating MetaMask Smart Account... Using account address:", account.address);
+    const salt = createSalt();
+
+    const smartAccount = await toMetaMaskSmartAccount({
       client: publicClient,
       implementation: Implementation.Hybrid,
       deployParams: [account.address, [], [], []],
-      deploySalt: createSalt(),
+      deploySalt: salt,
       signatory: { account: account },
     });
+
+    console.log("✅ Smart Account address:", smartAccount.address);
+    return smartAccount;
   };
+
+// Helper function to generate Etherscan links
+export function getEtherscanLink(type: 'address' | 'tx', value: string): string {
+  return `${ETHERSCAN_BASE_URL}/${type}/${value}`;
+}
+
+// Helper functions
+export const createSalt = () => toHex(randomBytes(8));
+
+export const getFeePerGas = async () => {
+  // The method for determining fee per gas is dependent on the bundler
+  // implementation. For this reason, this is centralised here.
+  const pimlicoClient = createPimlicoClient({
+    chain,
+    transport: http(BUNDLER_URL),
+  });
+
+  const { fast } = await pimlicoClient.getUserOperationGasPrice();
+
+  return fast;
+};
