@@ -105,6 +105,41 @@ If you see an error like `UserOperation reverted during simulation with reason: 
 2. **Invalid Delegation**: The delegation may have expired or have invalid caveats.
 3. **Bundler Issues**: The bundler may be rejecting the user operation due to gas price or other issues.
 
+### Known Error Code: 0x0796d945
+
+When executing delegations, you may encounter the error code `0x0796d945` during user operation simulation. This specific error is related to the MetaMask Delegation Framework's validation mechanism and can occur for several reasons:
+
+1. **Delegation Validation Failure**: The delegation may not be properly validated by the smart contract.
+2. **Incorrect Execution Parameters**: The parameters for the delegation execution might be incorrectly formatted.
+3. **Delegator Account Issues**: The delegator account might not be properly deployed or funded.
+
+To work around this issue, the toolkit includes a fallback mechanism that bypasses the delegation framework and executes a direct transaction when the standard delegation approach fails. This is implemented in the `executeOnBehalfOfDelegator` function in `create-delegation.ts`.
+
+### EIP-7715 Permissions Integration
+
+While the toolkit includes code for EIP-7715 permissions in `permissions.ts`, this functionality is not fully integrated into the main delegation flow in the current version. The EIP-7715 standard provides a standardized format for off-chain permission management between wallets and dApps, which complements the on-chain delegation capabilities.
+
+To use the EIP-7715 permissions functionality:
+
+1. Import the permission utilities from `permissions.ts`:
+   ```typescript
+   import { createPermissionRequest } from "./permissions";
+   ```
+
+2. Create a permission request before or alongside your delegation:
+   ```typescript
+   const permissionRequest = await createPermissionRequest(
+     delegateAccount,
+     delegatorAccount.address,
+     "Your dApp name",
+     ["requested:permission:type"]
+   );
+   ```
+
+3. Handle the permission request in your application flow, typically by presenting it to the user for approval.
+
+Future versions of this toolkit will more tightly integrate the EIP-7715 permissions with the delegation flow to provide a complete permissions management solution.
+
 ### Connection Issues
 
 If you have trouble connecting to the RPC or bundler:

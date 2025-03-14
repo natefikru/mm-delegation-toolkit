@@ -7,6 +7,7 @@
 
 import { Address } from "abitype";
 import { publicClient, getEtherscanLink } from "./shared";
+// Explicitly definied the PermissionRequest
 // Define the PermissionRequest type directly in this file to avoid circular dependencies
 export type PermissionRequest = {
   chainId: string; // hex-encoding of uint256
