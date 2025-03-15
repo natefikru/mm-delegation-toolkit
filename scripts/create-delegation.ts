@@ -34,9 +34,9 @@ import { createPermissionRequest } from "./permissions";
 dotenv.config();
 
 // Constants
-const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
 const BUNDLER_URL = process.env.BUNDLER_URL || "http://localhost:4337";
 const PRIVATE_KEY = process.env.PRIVATE_KEY;
+const DELEGATOR_PRIVATE_KEY = process.env.DELEGATOR_PRIVATE_KEY;
 
 async function checkIfRPCIsRunning() {
     // Check if RPC is running
@@ -162,10 +162,16 @@ export const executeOnBehalfOfDelegator = async (
 
   // The action that the redeemer is executing on behalf of the delegator.
   // This execution transfers 0.001 ETH from the delegator to the redeemer
+  // TODO: Can we only transfer money from the delegator's Smart Account? what if they store their money in the EOA account?
   const executions: ExecutionStruct[] = [
+    // {
+    //   target: redeemerAccount.address,
+    //   value: parseEther("0.000"),
+    //   callData: "0x", // TODO: should this be 0x?
+    // },
     {
       target: redeemerAccount.address,
-      value: parseEther("0.001"),
+      value: 1000000000000000n,
       callData: "0x",
     },
   ];
@@ -180,11 +186,12 @@ export const executeOnBehalfOfDelegator = async (
   // The call to the delegation framework to redeem the delegation
   const calls: Call[] = [
     {
-      to: delegation.delegator, // Target the delegator's account for the delegation redemption
+      to: redeemerAccount.address,
       data: redeemDelegationCalldata,
     },
   ];
 
+  // TODO: not sure if this is needed each time or not.
   // The delegate is submitting the user operation, so may be deployed via initcode. If the delegator
   // is not yet on-chain, it must be deployed before redeeming the delegation. If factory
   // args are provided, an additional call is inserted into the calls array that is encoded
@@ -201,12 +208,25 @@ export const executeOnBehalfOfDelegator = async (
   const feePerGas = await getFeePerGas();
 
   console.log("\n📝 Sending UserOperation...");
-  // This ends up throwing an error with code 0x0796d945
   const userOperationHash = await bundlerClient.sendUserOperation({
     account: redeemerAccount,
     calls,
     ...feePerGas,
   });
+
+  // TODO: can we can redeem the delegation via eth_call RPC method?
+  // // Send the call via eth_call RPC method
+  // const result = await publicClient.call({
+  //   account: redeemerAccount.address,
+  //   to: calls[0].to,
+  //   data: calls[0].data,
+  //   value: BigInt(0)
+  // })
+
+  // if (!result.data) {
+  //   throw new Error("eth_call failed - no data returned")
+  // }
+  // console.log("eth_call result:", result)
 
   console.log("✅ Delegation execution submitted");
   return userOperationHash;
@@ -218,7 +238,8 @@ async function main() {
   await checkIfBundlerIsRunning()
 
   // Create delegator account and smart account
-  const delegatorOwner = await createDelegator()
+  // const delegatorOwner = await createDelegator()
+  const delegatorOwner = privateKeyToAccount(formatPrivateKey(DELEGATOR_PRIVATE_KEY as string))
   const delegatorSmartAccount = await createMetaMaskAccount(delegatorOwner)
   console.log("Delegator smart account address:", delegatorSmartAccount.address)
 
@@ -230,12 +251,13 @@ async function main() {
 
   // Create and sign delegation
   const signedDelegation = await createDelegation(
-    delegatorSmartAccount, 
-    delegateSmartAccount.address
+    delegatorSmartAccount,
+    delegateSmartAccount.address // This is the address that will be used to redeem the delegation
   )
 
+  // Get the factory args for the delegator smart account
+  // Information that creates the delegator smart account if it hasn't been deployed yet
   const { factory, factoryData } = await delegatorSmartAccount.getFactoryArgs();
-
   const factoryArgs =
     factory && factoryData ? { factory, factoryData } : undefined;
 
