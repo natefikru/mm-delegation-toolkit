@@ -164,14 +164,9 @@ export const executeOnBehalfOfDelegator = async (
   // This execution transfers 0.001 ETH from the delegator to the redeemer
   // TODO: Can we only transfer money from the delegator's Smart Account? what if they store their money in the EOA account?
   const executions: ExecutionStruct[] = [
-    // {
-    //   target: redeemerAccount.address,
-    //   value: parseEther("0.000"),
-    //   callData: "0x", // TODO: should this be 0x?
-    // },
     {
       target: redeemerAccount.address,
-      value: 1000000000000000n,
+      value: parseEther("0.001"),
       callData: "0x",
     },
   ];

@@ -103,7 +103,7 @@ export const createMetaMaskAccount = async (account: PrivateKeyAccount) => {
       client: publicClient,
       implementation: Implementation.Hybrid,
       deployParams: [account.address, [], [], []],
-      deploySalt: "0x0000000000000000",
+      deploySalt: "" as `0x${string}`,
       signatory: { account: account },
     });
 
