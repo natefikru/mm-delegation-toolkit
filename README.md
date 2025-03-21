@@ -105,6 +105,56 @@ If you see an error like `UserOperation reverted during simulation with reason: 
 2. **Invalid Delegation**: The delegation may have expired or have invalid caveats.
 3. **Bundler Issues**: The bundler may be rejecting the user operation due to gas price or other issues.
 
+
+### Empty Error Code: 0x
+
+When executing delegations, you may encounter an error with an empty reason code (`0x`) during user operation simulation. This error appears as:
+
+```
+UserOperationExecutionError: Execution reverted with reason: UserOperation reverted during simulation with reason: 0x.
+```
+
+This error can occur for several reasons:
+
+1. **Gas Estimation Issues**: The bundler may be unable to properly estimate the gas required for the operation.
+2. **Smart Account Deployment**: If the delegator account is not yet deployed, the deployment process might be failing.
+3. **Paymaster Configuration**: Issues with the paymaster configuration or insufficient funds in the paymaster.
+4. **Delegation Framework Compatibility**: The delegation parameters might not be compatible with the current version of the framework.
+
+To troubleshoot this issue:
+
+1. Check that your delegator and delegate accounts have sufficient ETH.
+2. Verify that the bundler service is properly configured and accessible.
+3. Try simplifying the execution by reducing the complexity of the calls being made.
+4. Check the console logs for additional error details that might provide more context.
+
+The toolkit includes error handling to provide more information when this error occurs, but due to the nature of the empty reason code, additional debugging may be required.
+
+### EIP-7715 Permissions Integration
+
+While the toolkit includes code for EIP-7715 permissions in `permissions.ts`, this functionality is not fully integrated into the main delegation flow in the current version. The EIP-7715 standard provides a standardized format for off-chain permission management between wallets and dApps, which complements the on-chain delegation capabilities.
+
+To use the EIP-7715 permissions functionality:
+
+1. Import the permission utilities from `permissions.ts`:
+   ```typescript
+   import { createPermissionRequest } from "./permissions";
+   ```
+
+2. Create a permission request before or alongside your delegation:
+   ```typescript
+   const permissionRequest = await createPermissionRequest(
+     delegateAccount,
+     delegatorAccount.address,
+     "Your dApp name",
+     ["requested:permission:type"]
+   );
+   ```
+
+3. Handle the permission request in your application flow, typically by presenting it to the user for approval.
+
+Future versions of this toolkit will more tightly integrate the EIP-7715 permissions with the delegation flow to provide a complete permissions management solution.
+
 ### Connection Issues
 
 If you have trouble connecting to the RPC or bundler:

@@ -5,9 +5,6 @@
   "main": "index.js",
   "scripts": {
     "create-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/create-delegation.ts",
-    "redeem-delegation": "NODE_NO_WARNINGS=1 DEBUG=* tsx scripts/redeem-delegation.ts",
-    "format-delegation": "NODE_NO_WARNINGS=1 tsx scripts/format-delegation.ts",
-    "check-balance": "NODE_NO_WARNINGS=1 tsx scripts/check-balance.ts"
   },
   "keywords": [],
   "author": "",

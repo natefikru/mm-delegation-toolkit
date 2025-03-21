@@ -14,7 +14,7 @@ export const chain = sepolia;
 dotenv.config();
 
 const RPC_URL = process.env.RPC_URL || "http://localhost:8545";
-export const BUNDLER_URL = process.env.BUNDLER_URL || "http://localhost:3000";
+export const BUNDLER_URL = process.env.BUNDLER_URL || "http://localhost:4337";
 const ETHERSCAN_BASE_URL = "https://sepolia.etherscan.io";
 
 export const publicClient = getPublicClient();
@@ -98,13 +98,12 @@ export const customJSONStringify = (obj: any) => {
  */
 export const createMetaMaskAccount = async (account: PrivateKeyAccount) => {
     console.log("\n📝 Creating MetaMask Smart Account... Using account address:", account.address);
-    const salt = createSalt();
 
     const smartAccount = await toMetaMaskSmartAccount({
       client: publicClient,
       implementation: Implementation.Hybrid,
       deployParams: [account.address, [], [], []],
-      deploySalt: salt,
+      deploySalt: "" as `0x${string}`,
       signatory: { account: account },
     });
 
